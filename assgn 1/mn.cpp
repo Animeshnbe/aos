@@ -17,10 +17,11 @@
 #include <filesystem>
 #include <errno.h>
 #include <libgen.h>
+#include <signal.h>
 
 using namespace std;
 #define moveCursor(x, y) std::cout<<"\033["<<(x)<<";"<<(y)<<"H";
-#define clrscr() printf("\033[H\033[J");
+#define clrscr() std::cout<<"\033[H\033[J";
 #define CTRL_KEY(c) ((c) & 0x1f)
 
 struct winsize term;
@@ -36,9 +37,7 @@ struct pctrl
     string homePath;
     stack<string> visited,next;
     int count=0;
-    int MAXN;       // no of files can be printed based on the screen size
-    int firstIndex; // point to first index of files
-    int lastIndex;  // point to last index of files
+    int linenum=0;
     int cursorptr;
     string currentDir;
     vector<string> comm;
@@ -163,8 +162,6 @@ void initialise(const char *dirname)
 {
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term); // initalize value of w based on screen
     controller.cursorptr = 1;
-    controller.firstIndex = 0;
-    controller.lastIndex = controller.MAXN;
     controller.homePath = dirname;
 
     struct dirent *dent;
@@ -210,16 +207,16 @@ void initialise(const char *dirname)
 }
 
 
-void explorer(int* linenum, int pos, int tot){
+void explorer(int pos, int tot){
     clrscr();
     
-    if (*linenum<=0)
-        *linenum=0;
-    cout<<controller.homePath<<", ";
-    if (controller.visited.empty())
-        cout<<endl;
-    else
-        cout<<controller.visited.top()<<endl;
+    if (controller.linenum<=0)
+        controller.linenum=0;
+    cout<<controller.homePath<<", "<<tot<<endl;
+    // if (controller.visited.empty())
+    //     cout<<endl;
+    // else
+    //     cout<<controller.visited.top()<<endl;
     int showlines=controller.count;
     if (controller.count>tot-4){
         //vertical overflow
@@ -227,7 +224,7 @@ void explorer(int* linenum, int pos, int tot){
     }
 
     for (int i=0;i<showlines;i++){
-        if (i==*linenum)
+        if (i==controller.linenum)
             cout<<">>>  "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
         else
             cout<<"     "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
@@ -320,26 +317,55 @@ void rename(string src, string newPath){
     // fs::remove_all(src);
 }
 
-void opener(int* linenum, int* pos, int tot){
-    if (all[*linenum+*pos].perm[0]=='d'){
+void goto_path(string newPath,int tot){
+    controller.visited.push(controller.homePath);
+    initialise(&newPath[0]);
+    controller.linenum=0;
+    moveCursor(0, 0);
+    explorer(0,tot);
+}
+
+void opener(int* pos, int tot){
+    if (all[controller.linenum+*pos].perm[0]=='d'){
         controller.visited.push(controller.homePath);
-        string newdir=controller.homePath+'/'+all[*linenum+*pos].name;
+        string newdir=controller.homePath+'/'+all[controller.linenum+*pos].name;
         initialise(&newdir[0]);
-        *linenum=0;
+        controller.linenum=0;
         *pos=0;
         moveCursor(0, 0);
-        explorer(linenum,*pos,tot);
+        explorer(*pos,tot);
     } 
     else {
         int pid = fork();
         if (pid == 0) {
-            string fileName = controller.homePath+'/'+all[*linenum+*pos].name;
+            string fileName = controller.homePath+'/'+all[controller.linenum+*pos].name;
             execl("/usr/bin/xdg-open", "xdg-open", &fileName[0], (char *)0);
             exit(1);
         }
     }
 }
+
+static void sig_handler(int sig)
+{
+  if (SIGWINCH == sig) {
+    ioctl(0, TIOCGWINSZ, &term);
+    disableRaw();
+    controller.linenum=0;
+    moveCursor(0, 0);
+    explorer(0,term.ws_row);
+    enableRaw();
+  }
+
+} 
+
+  // Capture SIGWINCH
+  
 int main(){
+    signal(SIGWINCH, sig_handler);
+
+    // while (1) {
+    //     pause();
+    // }
     char c;
     bool normal=true; //false for command mode
     
@@ -349,9 +375,9 @@ int main(){
     initialise(cwd);
 
     int tot = term.ws_row;
-    int linenum=0,pos=0;
+    int pos=0;
     moveCursor(0, 0);
-    explorer(&linenum,pos,tot);
+    explorer(pos,term.ws_row);
     // string name="test";
     // copyfile("burr", name, true);
     // delentries("./burr/cony.txt");
@@ -360,9 +386,8 @@ int main(){
     // printMetaFile();
 
     while (1) {
-        char c = '\0';
-        if (normal)
-            enableRaw();
+        c = '\0';
+        enableRaw();
         if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
         if (c == 'q') break;
         if (c=='h'){ //home
@@ -372,39 +397,40 @@ int main(){
             disableRaw();
             controller.visited.push(controller.homePath);
             initialise(homedir);
-            moveCursor(linenum, 0);
-            explorer(&linenum,pos,tot);
+            moveCursor(controller.linenum, 0);
+            explorer(pos,term.ws_row);
         }
         else if (iscntrl(c)){
             if (c == '\x1b') {
                 char seq[3];
                 if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
                 if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+                cout<<seq<<endl;
                 if (seq[0] == '[') {
                     switch (seq[1]) {
                         case 'A':
-                            if (linenum==0){
+                            if (controller.linenum==0){
                                 if (pos>0)
                                     pos--;
                             } else {
-                                linenum--;
+                                controller.linenum--;
                             }
                             disableRaw();
-                            moveCursor(linenum, 0);
-                            explorer(&linenum,pos,tot);
+                            moveCursor(controller.linenum, 0);
+                            explorer(pos,term.ws_row);
                         break;
                         case 'B': 
                             // cout<<"Down"<<endl;
-                            if (pos+linenum<controller.count-1){
-                                if (linenum==tot-5){
+                            if (pos+controller.linenum<controller.count-1){
+                                if (controller.linenum==term.ws_row-5){
                                     pos++;
                                 } else {
-                                    linenum++;
+                                    controller.linenum++;
                                 }
                             }
                             disableRaw();
-                            moveCursor(linenum, 0);
-                            explorer(&linenum,pos,tot);
+                            moveCursor(controller.linenum, 0);
+                            explorer(pos,term.ws_row);
                         break;
                         case 'D': 
                             disableRaw();
@@ -413,8 +439,8 @@ int main(){
                                 initialise(&controller.visited.top()[0]);
                                 controller.visited.pop();
                             }
-                            moveCursor(linenum, 0);
-                            explorer(&linenum,pos,tot);
+                            moveCursor(controller.linenum, 0);
+                            explorer(pos,term.ws_row);
                         break;
                         case 'C':
                             disableRaw();
@@ -423,8 +449,13 @@ int main(){
                                 initialise(&controller.next.top()[0]);
                                 controller.next.pop();
                             }
-                            moveCursor(linenum, 0);
-                            explorer(&linenum,pos,tot);
+                            moveCursor(controller.linenum, 0);
+                            explorer(pos,term.ws_row);
+                        break;
+                        default:
+                            disableRaw();
+                            // moveCursor(linenum, 0);
+                            explorer(pos,term.ws_row);
                         break;
                     }
                 }
@@ -433,27 +464,78 @@ int main(){
             
             if (c==13){
                 disableRaw();
-                opener(&linenum,&pos,tot);
+                opener(&pos,term.ws_row);
             }
             if (c==127){ //bksp
                 controller.visited.push(controller.homePath);
                 char* updir = dirname(&controller.homePath[0]);
                 disableRaw();
                 initialise(updir);
-                moveCursor(linenum, 0);
-                explorer(&linenum,pos,tot);
+                controller.linenum=2;
+                moveCursor(2, 0);
+                explorer(pos,term.ws_row);
             }
         }
         else {
             if (c==58){
                 disableRaw();
+                fflush(stdin);
                 normal=false;
-                moveCursor(tot-1, 0);
-                cout << "Command Mode, Press ESC to switch to normal mode\n";
-                string str;
-                getline(cin,str);
+                while (!normal){
+                    moveCursor(term.ws_row-1, 0);
+                    cout << "Command Mode, Press ESC to switch to normal mode\n";
+                    string s,comm;
+                    
+                    char buf;
+                    struct termios original, newt;
+                    int ttyfd;
+                    
+                    ttyfd = open("/dev/tty", O_RDWR);
+                    if(ttyfd < 0){
+                        printf("Could not open tty!\n");
+                        return -1;
+                    }
+                    
+                    tcgetattr(ttyfd, &original);
+                    newt=original;
+                    newt.c_lflag &= ~(ICANON);
+                    tcsetattr(ttyfd, TCSANOW, &newt);
+                    
+                    while(1){
+                        if (read(STDIN_FILENO, &buf, 1) == -1 && errno != EAGAIN) die("read");
+                        if (iscntrl(buf)){
+                            if (buf==27){
+                                cout<<"\033[9999;1H\033[J";
+                                cin.clear();
+                                normal=true;
+                                break;
+                            }
+                            else if (buf==10){
+                                cout<<"M: "<<s<<endl;
+                                break;
+                            }
+                        }
+                        
+                        else {
+                            s+=(char)buf;
+                        }
+                    }
+                    tcsetattr(ttyfd, TCSANOW, &original);
+                    
+                    close(ttyfd);
+                    if (normal){
+                        moveCursor(term.ws_row-1, 0);
+                        cout << "Normal Mode, Press : to switch to command mode\n";
+                        break;
+                    }
+                    comm = s.substr(0, s.find(' '));
+                    int i=s.find(' ')+1;
+                    
+                    if(comm=="goto"){
+                        goto_path(s.substr(i),term.ws_row);
+                    }
+                }
             }
-            
             // printf("%d ('%c')\r\n", c, c);
         }
     }    
