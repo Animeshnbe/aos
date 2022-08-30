@@ -215,7 +215,11 @@ void explorer(int* linenum, int pos, int tot){
     
     if (*linenum<=0)
         *linenum=0;
-    cout<<controller.homePath<<", "<<endl;
+    cout<<controller.homePath<<", ";
+    if (controller.visited.empty())
+        cout<<endl;
+    else
+        cout<<controller.visited.top()<<endl;
     int showlines=controller.count;
     if (controller.count>tot-4){
         //vertical overflow
@@ -228,6 +232,9 @@ void explorer(int* linenum, int pos, int tot){
         else
             cout<<"     "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
     }
+
+    moveCursor(tot-1, 0);
+    cout << "Normal Mode, Press : to switch to command mode\n";
     
 }
 
@@ -313,6 +320,25 @@ void rename(string src, string newPath){
     // fs::remove_all(src);
 }
 
+void opener(int* linenum, int* pos, int tot){
+    if (all[*linenum+*pos].perm[0]=='d'){
+        controller.visited.push(controller.homePath);
+        string newdir=controller.homePath+'/'+all[*linenum+*pos].name;
+        initialise(&newdir[0]);
+        *linenum=0;
+        *pos=0;
+        moveCursor(0, 0);
+        explorer(linenum,*pos,tot);
+    } 
+    else {
+        int pid = fork();
+        if (pid == 0) {
+            string fileName = controller.homePath+'/'+all[*linenum+*pos].name;
+            execl("/usr/bin/xdg-open", "xdg-open", &fileName[0], (char *)0);
+            exit(1);
+        }
+    }
+}
 int main(){
     char c;
     bool normal=true; //false for command mode
@@ -335,10 +361,21 @@ int main(){
 
     while (1) {
         char c = '\0';
-        enableRaw();
+        if (normal)
+            enableRaw();
         if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
         if (c == 'q') break;
-        else if (iscntrl(c) && c==27){
+        if (c=='h'){ //home
+            char* homedir;
+            if ((homedir = getenv("HOME"))==NULL)
+                homedir=getpwuid(getuid())->pw_dir;
+            disableRaw();
+            controller.visited.push(controller.homePath);
+            initialise(homedir);
+            moveCursor(linenum, 0);
+            explorer(&linenum,pos,tot);
+        }
+        else if (iscntrl(c)){
             if (c == '\x1b') {
                 char seq[3];
                 if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
@@ -393,47 +430,33 @@ int main(){
                 }
                 // return '\x1b';
             } 
-        }
-        else {
-            if (c==10){
-                cout<<"Enter";
-            }
-            if (c=='h'){
-                char* homedir;
-                if ((homedir = getenv("HOME"))==NULL)
-                    homedir=getpwuid(getuid())->pw_dir;
+            
+            if (c==13){
                 disableRaw();
-                controller.visited.push(controller.homePath);
-                initialise(homedir);
-                moveCursor(linenum, 0);
-                explorer(&linenum,pos,tot);
+                opener(&linenum,&pos,tot);
             }
-            if (c==127){
+            if (c==127){ //bksp
+                controller.visited.push(controller.homePath);
                 char* updir = dirname(&controller.homePath[0]);
                 disableRaw();
-                controller.visited.push(controller.homePath);
                 initialise(updir);
                 moveCursor(linenum, 0);
                 explorer(&linenum,pos,tot);
             }
+        }
+        else {
+            if (c==58){
+                disableRaw();
+                normal=false;
+                moveCursor(tot-1, 0);
+                cout << "Command Mode, Press ESC to switch to normal mode\n";
+                string str;
+                getline(cin,str);
+            }
+            
             // printf("%d ('%c')\r\n", c, c);
         }
-    }            
+    }    
             
-
-        // cout<<(int)c<<endl;
-        // if ((c == 'k' || c == 'K') && controller.firstIndex != 0)
-        // {
-        // }
-
-        // if (c==127){
-        //     uplvl();
-        // }
-        // if (c==68){
-        //     back();
-        // }
-        // if (c==67){
-        //     forward();
-        // }
     return 0;
 }
