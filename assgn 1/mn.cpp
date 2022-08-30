@@ -632,9 +632,7 @@ int main(){
                             else if (buf==127){
                                 disableRaw();
                                 cout << '\b' << " " << '\b';
-                                cout << '\b' << " " << '\b';
-                                cout << '\b' << " " << '\b';
-                                enableRaw(true);
+                                enableRaw();
                             }
                         }
                         
