@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <algorithm>
 #include <unistd.h>
+#include <cstdio>
 #include <iostream>
 #include <fcntl.h>
 #include <stack>
@@ -56,25 +57,29 @@ struct filer
 
 vector<filer> all;
 
-struct termios orig_termios;
+struct termios orig_termios,original;
 
 void disableRaw(){
     if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
         die("tcsetattr");
 }
 
-void enableRaw(){
+void enableRaw(bool ech=false){
     tcgetattr(STDIN_FILENO, &orig_termios);
     atexit(disableRaw);
 
     struct termios raw = orig_termios;
 
-    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+    raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
     raw.c_oflag &= ~(OPOST);
-    raw.c_lflag &= ~(ECHO | ICANON);
+    if (ech)
+        raw.c_lflag &= ~(ICANON);
+    else
+        raw.c_lflag &= ~(ECHO | ICANON);
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
+
 
 string permissions(char *file){
     struct stat st;
@@ -140,6 +145,28 @@ string ownergroup(char* file){
     return modeval;
 }
 
+string get_path(string token)
+{
+    string currentdirpath = controller.homePath;
+
+    if (token[0] == '.' && token[1] != '\0')
+        return currentdirpath + "/" + token.substr(2, token.length() - 1);
+
+    // else if(token[0] == '/')
+    // return currentdirpath + "/" + token.substr(2, token.length()-1);
+
+    else if (token[0] == '~' && token[1] != '\0')
+        return "./" + token.substr(2, token.length() - 1);
+
+    else if (token[0] == '~')
+        return "./";
+
+    else
+    {
+        return currentdirpath;
+    }
+}
+
 string readableSize(size_t size) {              
     static const char *SIZES[] = { "B", "K", "M", "G", "T" };
     int res = 0;
@@ -161,14 +188,16 @@ string readableSize(size_t size) {
 void initialise(const char *dirname)
 {
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term); // initalize value of w based on screen
-    controller.cursorptr = 1;
-    controller.homePath = dirname;
 
     struct dirent *dent;
     DIR *dir = opendir(dirname);
   
-    if (dir == NULL)
+    if (dir == NULL){
         cout<<"Startup error: Could not open current directory";
+        return;
+    }
+    controller.cursorptr = 1;
+    controller.homePath = dirname;
 
     vector<string> files;
     string ts_act;
@@ -223,7 +252,7 @@ void explorer(int pos, int tot){
         showlines=tot-4;
     }
 
-    for (int i=0;i<showlines;i++){
+    for (int i=0;i<showlines && pos+i<all.size();i++){
         if (i==controller.linenum)
             cout<<">>>  "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
         else
@@ -275,33 +304,104 @@ void forward(){
 
 }
 
-void copyfile(string src, string dst,bool move){
-    clock_t start, end;
-    start = clock();
+void create_file(string name){
+    fstream file;
+    file.open(name,ios::out);
+    if(!file){
+        fstream file(name, fstream::in | fstream::out | fstream::trunc);
+    }
+}
 
-    try
+void copy_file(string src, string dst)
+{
+    char writeBlock[1024];
+    struct stat sourceInfo, destnInfo;
+    int r;
+
+    int outdata = open(dst.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+    int data = open(src.c_str(), O_RDONLY);
+    
+    if (stat(src.c_str(), &sourceInfo) == -1){
+        cout<<"Cannot open file\n";
+        return;
+    }
+    if (stat(dst.c_str(), &destnInfo) == -1){
+        cout<<"Destination directory not found\n";
+        return;
+    }
+
+    while (r = read(data, writeBlock, sizeof(writeBlock)) > 0)
+        write(outdata, writeBlock, r);
+    chown(dst.c_str(), sourceInfo.st_uid, sourceInfo.st_gid);
+    chmod(dst.c_str(), sourceInfo.st_mode);
+}
+
+void copy_folder(string src, string dest){
+    DIR *d;
+    struct dirent *dir;
+    int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); //make if not present
+    d = opendir(src.c_str());
+    if (d == NULL)
     {
-        struct dirent *dent;
-        struct stat st;
-        if(stat(&src[0], &st) == 0){
-            mode_t enttype = st.st_mode;
-            filesystem:: path sourceFile = src;
-            filesystem:: path targetParent = dst;
-            // auto target = targetParent / sourceFile.filename();
-            filesystem:: copy(sourceFile, targetParent, filesystem ::copy_options::overwrite_existing | filesystem::copy_options::recursive);
-            if (move==true){
-                uintmax_t n = filesystem::remove_all(sourceFile);
+        cout<<"Cannot open source\n";
+        return;
+    }
+    while ((dir = readdir(d)) != NULL)
+    {
+        if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
+            ;
+        else
+        {
+            // string name = dir->d_name;
+            string eachfile = src + "/" + dir->d_name;
+            struct stat st;
+            if (stat(eachfile.c_str(), &st) == -1)
+            {
+                cout << "error 2";
+                return;
             }
+
+            if (S_ISDIR(st.st_mode))
+                copy_folder(eachfile, dest + "/" + dir->d_name);
+            else
+                copy_file(eachfile, dest + "/" + dir->d_name);
         }
     }
-    catch (std::exception& ex) //If any filesystem error
+}
+
+void copy(vector<string> &entities)
+{
+    int n = entities.size();
+    if (n < 3)
     {
-        cout << ex.what();
+        cout<<"Too few arguments!\n";
+        return;
     }
 
-    end = clock();
+    string dest = entities[n-1];
+    for (int i=1; i<n-1; i++)
+    {
+        string destnPath = get_path(dest) + "/" + entities[i];
 
-    cout << "COPIED in " << static_cast<double>(end - start) / CLOCKS_PER_SEC << " seconds\n";
+        string sourcePath = controller.homePath + "/" + entities[i];
+
+        // check if entities[i] is a file
+        struct stat st;
+        bool is_folder=false;
+        if (stat(sourcePath.c_str(), &st) == -1){
+            cout<<"Cannot open file\n";
+            return;
+        }
+        else{
+            if ((S_ISDIR(st.st_mode)))
+                is_folder=true;
+        }
+        if (is_folder == false)
+            copy_file(sourcePath, destnPath);
+        else{
+            copy_folder(sourcePath, destnPath);
+        }
+    }
 }
 
 void delentries(string dirname){
@@ -311,8 +411,7 @@ void delentries(string dirname){
 }
 
 void rename(string src, string newPath){
-    filesystem::path p = src;
-    filesystem::rename(p, newPath);
+    
  
     // fs::remove_all(src);
 }
@@ -343,6 +442,25 @@ void opener(int* pos, int tot){
             exit(1);
         }
     }
+}
+
+void get_allargs(string rawargs, vector<string> &token)
+{
+    // Used to split string around spaces.
+    string arg = "";
+    for (auto x : rawargs)
+    {
+        if (x == ' ')
+        {
+            token.push_back(arg);
+            arg = "";
+        }
+        else
+        {
+            arg += x;
+        }
+    }
+    token.push_back(arg);
 }
 
 static void sig_handler(int sig)
@@ -472,14 +590,13 @@ int main(){
                 disableRaw();
                 initialise(updir);
                 controller.linenum=2;
-                moveCursor(2, 0);
+                moveCursor(1, 0);
                 explorer(pos,term.ws_row);
             }
         }
         else {
             if (c==58){
                 disableRaw();
-                fflush(stdin);
                 normal=false;
                 while (!normal){
                     moveCursor(term.ws_row-1, 0);
@@ -487,54 +604,74 @@ int main(){
                     string s,comm;
                     
                     char buf;
-                    struct termios original, newt;
-                    int ttyfd;
+                    // int ttyfd;
                     
-                    ttyfd = open("/dev/tty", O_RDWR);
-                    if(ttyfd < 0){
-                        printf("Could not open tty!\n");
-                        return -1;
-                    }
+                    // ttyfd = open("/dev/tty", O_RDWR);
+                    // if(ttyfd < 0){
+                    //     printf("Could not open tty!\n");
+                    //     return -1;
+                    // }
                     
-                    tcgetattr(ttyfd, &original);
-                    newt=original;
-                    newt.c_lflag &= ~(ICANON);
-                    tcsetattr(ttyfd, TCSANOW, &newt);
-                    
+                    // echoRaw(ttyfd);
+                    enableRaw();
                     while(1){
-                        if (read(STDIN_FILENO, &buf, 1) == -1 && errno != EAGAIN) die("read");
+                        fflush(stdin);
+                        buf=getchar();
                         if (iscntrl(buf)){
                             if (buf==27){
-                                cout<<"\033[9999;1H\033[J";
-                                cin.clear();
                                 normal=true;
+                                disableRaw();
                                 break;
                             }
                             else if (buf==10){
-                                cout<<"M: "<<s<<endl;
+                                disableRaw();
+                                moveCursor(term.ws_row, 0);
+                                cout<<"\33[K\r";
                                 break;
+                            }
+                            else if (buf==127){
+                                disableRaw();
+                                cout << '\b' << " " << '\b';
+                                cout << '\b' << " " << '\b';
+                                cout << '\b' << " " << '\b';
+                                enableRaw(true);
                             }
                         }
                         
                         else {
+                            cout<<(char)buf;
                             s+=(char)buf;
                         }
                     }
-                    tcsetattr(ttyfd, TCSANOW, &original);
+                    // disRaw(ttyfd);
                     
-                    close(ttyfd);
+                    
                     if (normal){
+                        cout<<"\033[9999;1H\033[J";
                         moveCursor(term.ws_row-1, 0);
+                        cout<<"\33[2K\r";
                         cout << "Normal Mode, Press : to switch to command mode\n";
                         break;
                     }
-                    comm = s.substr(0, s.find(' '));
-                    int i=s.find(' ')+1;
                     
-                    if(comm=="goto"){
-                        goto_path(s.substr(i),term.ws_row);
+
+                    // comm = s.substr(0, s.find(' '));
+                    // int i=s.find(' ')+1;
+                    vector<string> allargs;
+                    get_allargs(s,allargs);
+
+                    if(allargs[0]=="goto"){
+                        goto_path(allargs[1],term.ws_row);
+                    }
+                    if (allargs[0]=="copy"){
+                        copy(allargs);
                     }
                 }
+            }
+            else{
+                c = '\0';
+                moveCursor(term.ws_row-1, 0);
+                disableRaw();
             }
             // printf("%d ('%c')\r\n", c, c);
         }
