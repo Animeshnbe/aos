@@ -65,7 +65,7 @@ void disableRaw(){
         die("tcsetattr");
 }
 
-void enableRaw(bool ech=false){
+void enableRaw(){
     tcgetattr(STDIN_FILENO, &orig_termios);
     atexit(disableRaw);
 
@@ -73,10 +73,7 @@ void enableRaw(bool ech=false){
 
     raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
     raw.c_oflag &= ~(OPOST);
-    if (ech)
-        raw.c_lflag &= ~(ICANON);
-    else
-        raw.c_lflag &= ~(ECHO | ICANON);
+    raw.c_lflag &= ~(ECHO | ICANON);
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
@@ -596,9 +593,6 @@ int main(){
     // copyfile("burr", name, true);
     // delentries("./burr/cony.txt");
 
-    // setFileVector(cwd);
-    // printMetaFile();
-
     while (1) {
         c = '\0';
         enableRaw();
@@ -703,15 +697,6 @@ int main(){
                     string s,comm;
                     
                     char buf;
-                    // int ttyfd;
-                    
-                    // ttyfd = open("/dev/tty", O_RDWR);
-                    // if(ttyfd < 0){
-                    //     printf("Could not open tty!\n");
-                    //     return -1;
-                    // }
-                    
-                    // echoRaw(ttyfd);
                     enableRaw();
                     bool started=false;
                     while(1){
@@ -720,6 +705,10 @@ int main(){
                         if (!started){
                             cout<<"\33[K\r";
                             started=true;
+                            if (buf=='['){   // if last switch from cmd done using keys other than ESC
+                                buf=getchar();
+                                continue;
+                            }
                         }
                         if (iscntrl(buf)){
                             if (buf==27){
@@ -746,7 +735,6 @@ int main(){
                             s+=(char)buf;
                         }
                     }
-                    // disRaw(ttyfd);
                     
                     
                     if (normal){
