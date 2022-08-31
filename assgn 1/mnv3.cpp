@@ -148,41 +148,48 @@ string ownergroup(char* file){
 
 string get_path(string token)
 {
-    if (token[0] == '/'){
-        if (token[token.length() - 1]=='/') //remove slash at end
-            return token.substr(0,token.length() - 1);
-        return token;
-    }
-
-    string currentdirpath = controller.homePath;
-
-    if (token==".")
-        return currentdirpath;
-
-    if (token[0] == '.' && token[1] != '\0'){
-        if (token[1]=='.'){ //up one level only
-            string parent = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
-            return parent + token.substr(2, token.length() - 1);
+    string currentdirpath = "/home/animesh/Downloads/testerv2";
+    int i;
+    for (i=0;i<token.length();i++){
+        if (token[i]=='~'){
+            char* homedir;
+            if ((homedir = getenv("HOME"))==NULL)
+                homedir=getpwuid(getuid())->pw_dir;
+            currentdirpath = homedir;
         }
-        else
-            return currentdirpath + "/" + token.substr(2, token.length() - 1);
+        else if (token[i]=='.'){ 
+            if (token[i+1] != '\0'){
+                if (token[i+1] == '.'){
+                    if (i==0)
+                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                    else if (currentdirpath[currentdirpath.length()-1]=='/'){
+                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                    }
+                    else
+                        currentdirpath += '.';
+                    i++; //move 2 places
+                }
+                else if (token[i+1]=='/'){
+                    i++;
+                } else {
+                    currentdirpath += token[i];
+                }
+            }
+            else{
+                return currentdirpath;
+            }
+        }
+        else if (token[i]=='/'){
+            if (i==0)
+                currentdirpath = "/";
+            else if (token[i+1] != '\0')
+                currentdirpath += token[i];
+        }else{
+            currentdirpath += token[i];
+        }
     }
-
-    // else if(token[0] == '/')
-    // return currentdirpath + "/" + token.substr(2, token.length()-1);
-
-    else if (token[0] == '~' && token[1] != '\0'){
-        char cwd[PATH_MAX];
-        return getcwd(cwd, PATH_MAX) + token.substr(2, token.length() - 1);
-    }
-
-    else if (token[0] == '~'){
-        char cwd[PATH_MAX];
-        return getcwd(cwd, PATH_MAX);
-    }
-
-    else
-        return currentdirpath+"/"+token;
+    return currentdirpath;
 }
 
 string readableSize(size_t size) {              
@@ -287,10 +294,8 @@ void pathsearch(char* dirname, string name){
     struct dirent *dent;
     DIR *dir = opendir(dirname);
   
-    if (dir == NULL){
-        cout<<"No results found";
+    if (dir == NULL)
         return;
-    }
 
     string ts_act;
     while ((dent = readdir(dir)) != NULL){
@@ -708,9 +713,14 @@ int main(){
                     
                     // echoRaw(ttyfd);
                     enableRaw();
+                    bool started=false;
                     while(1){
                         fflush(stdin);
                         buf=getchar();
+                        if (!started){
+                            cout<<"\33[K\r";
+                            started=true;
+                        }
                         if (iscntrl(buf)){
                             if (buf==27){
                                 normal=true;
