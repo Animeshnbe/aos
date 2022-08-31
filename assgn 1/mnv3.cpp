@@ -474,10 +474,21 @@ void mover(vector<string> allargs){
     }
 }
 
-void delentries(string dirname){
-    filesystem:: path tmp = dirname;
-    uintmax_t n = filesystem::remove_all(tmp);
-    cout<<"Deleted "<<n<<" file(s) and directory(ies)"<<endl;
+void delete_file(vector<string> &token){
+    string file = get_path(token[1]);
+    struct stat st;
+    if(stat(&file[0], &st) == 0){
+        mode_t perm = st.st_mode;
+        if( perm & S_IFREG ){
+            int ret = remove(file.c_str());
+            if (ret == -1)
+                cout<<"Could not delete file";
+            else
+                cout<<"Deleted successfully!";
+        } else
+            cout<<"Not a file";
+    } else
+        cout<<"File not found";
 }
 
 void goto_path(string newPath,int tot){
@@ -775,9 +786,9 @@ int main(){
                                 cout<<"False";
                         }
                     }
-                    // if (allargs[0]=="delete_file"){
-
-                    // }
+                    if (allargs[0]=="delete_file"){
+                        delete_file(allargs);
+                    }
                     // if (allargs[0]=="delete_dir"){
                         
                     // }
