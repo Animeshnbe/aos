@@ -327,12 +327,30 @@ void forward(){
 
 }
 
-void create_file(string name){
+void create_file(string& name,string dest){
     fstream file;
-    file.open(controller.homePath+"/"+name,ios::out);
+    if (dest==".")
+        file.open(controller.homePath+"/"+name,ios::out);
+    else
+        file.open(get_path(dest)+"/"+name,ios::out);
     if(!file){
         fstream file(name, fstream::in | fstream::out | fstream::trunc);
     }
+}
+
+int create_dir(string& dirname,string dest){
+    dest = get_path(dest);
+    struct stat st;
+    if (stat(dest.c_str(), &st) == -1){
+        cout<<"Destination not found";
+        return -1;
+    }
+    if (S_ISDIR(st.st_mode)){
+        dest+="/"+dirname;
+        return mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    }
+    cout<<"MKDIR Failed";
+    return -1;
 }
 
 void copy_file(string src, string dst)
@@ -741,10 +759,10 @@ int main(){
                         }
                     }
                     if (allargs[0]=="create_file"){
-                        if (allargs.size()<2)
+                        if (allargs.size()<3)
                             cout<<"Too few arguments";
                         else
-                            create_file(allargs[1]);
+                            create_file(allargs[1],allargs[2]);
                     }
                     if (allargs[0]=="search"){
                         if (allargs.size()<2)
@@ -766,9 +784,13 @@ int main(){
                     if (allargs[0]=="move"){
                         mover(allargs);
                     }
-                    // if (allargs[0]=="create_dir"){
-                        
-                    // }
+                    if (allargs[0]=="create_dir"){
+                        if (allargs.size()<3)
+                            cout<<"Too few arguments";
+                        else
+                            if (create_dir(allargs[1],allargs[2])==0)
+                                cout<<"Success";
+                    }
                     s="";
                 }
             }
