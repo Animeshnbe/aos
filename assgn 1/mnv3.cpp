@@ -20,6 +20,7 @@
 #include <libgen.h>
 #include <signal.h>
 #include <limits.h>
+#include <ftw.h>
 
 using namespace std;
 #define moveCursor(x, y) std::cout<<"\033["<<(x)<<";"<<(y)<<"H";
@@ -495,6 +496,19 @@ void delete_file(vector<string> &token){
         cout<<"File not found";
 }
 
+static int delete_dir(const char *pathname, const struct stat *sbuf, int type, struct FTW *ftwbuf){
+    if(pathname=="." || pathname==".."){
+        perror("Cannot delete here");
+        return -1;
+    }
+    if (remove(pathname) < 0)
+    {
+        perror("Cannot delete due to permission error");
+        return -1;
+    }
+    return 0;
+}
+
 void goto_path(string newPath,int tot){
     string prev = controller.homePath;
     if (newPath==".")
@@ -789,9 +803,17 @@ int main(){
                     if (allargs[0]=="delete_file"){
                         delete_file(allargs);
                     }
-                    // if (allargs[0]=="delete_dir"){
-                        
-                    // }
+                    if (allargs[0]=="delete_dir"){
+                        if (allargs.size()<2)
+                            cout<<"Too few arguments";
+                        else{
+                            string delete_path = get_path(allargs[1]);
+                            if (nftw(delete_path.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
+                                perror("File Tree walk error");
+                                exit(1);
+                            }
+                        }
+                    }
                     if (allargs[0]=="move"){
                         mover(allargs);
                     }
