@@ -145,7 +145,7 @@ string ownergroup(char* file){
 
 string get_path(string token)
 {
-    string currentdirpath = "/home/animesh/Downloads/testerv2";
+    string currentdirpath = controller.homePath;
     int i;
     for (i=0;i<token.length();i++){
         if (token[i]=='~'){
@@ -183,6 +183,8 @@ string get_path(string token)
             else if (token[i+1] != '\0')
                 currentdirpath += token[i];
         }else{
+            if (i==0)
+                currentdirpath += "/";
             currentdirpath += token[i];
         }
     }
@@ -215,7 +217,7 @@ bool initialise(const char *dirname)
     DIR *dir = opendir(dirname);
   
     if (dir == NULL){
-        cout<<"Could not open this directory";
+        cout<<"Could not open this directory "<<dirname;
         return false;
     }
     controller.cursorptr = 1;
