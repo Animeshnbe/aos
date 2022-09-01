@@ -429,6 +429,7 @@ void copier(vector<string> &entities){
         else{
             pathsearch(&sourcePath[0],destnPath.substr(destnPath.find_last_of('/')+1));
             if (controller.foundFile){
+                moveCursor(term.ws_row, 0);
                 cout<<"Cannot copy a folder into itself!";
                 controller.foundFile = false;
                 return;
