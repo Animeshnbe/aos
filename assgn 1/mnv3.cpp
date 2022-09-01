@@ -147,7 +147,7 @@ string ownergroup(char* file){
 string get_path(string token){
     string currentdirpath = controller.homePath;
     if (currentdirpath=="/" && token.length()>0){
-        if (token=="..")
+        if (token==".." || token==".")
             return currentdirpath;
         currentdirpath = "";
     }
@@ -356,10 +356,7 @@ void pathsearch(char* dirname, string name){
 
 void create_file(string& name,string dest){
     fstream file;
-    if (dest==".")
-        file.open(controller.homePath+"/"+name,ios::out);
-    else
-        file.open(get_path(dest)+"/"+name,ios::out);
+    file.open(get_path(dest)+"/"+name,ios::out | ios::app);
     if(!file){
         fstream file(name, fstream::in | fstream::out | fstream::trunc);
     }
