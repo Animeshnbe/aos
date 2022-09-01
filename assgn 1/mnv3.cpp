@@ -218,7 +218,7 @@ bool initialise(const char *dirname)
     DIR *dir = opendir(dirname);
   
     if (dir == NULL){
-        cout<<"Could not open this directory "<<dirname;
+        // cout<<"Could not open this directory "<<dirname;
         return false;
     }
     controller.cursorptr = 1;
@@ -320,18 +320,6 @@ void pathsearch(char* dirname, string name){
     }
 }
 
-void uplvl(){
-
-}
-
-void back(){
-
-}
-
-void forward(){
-
-}
-
 void create_file(string& name,string dest){
     fstream file;
     if (dest==".")
@@ -360,55 +348,48 @@ int create_dir(string& dirname,string dest){
 
 void copy_file(string src, string dst)
 {
-    char writeBlock[1024];
-    struct stat sourceInfo, destnInfo;
-    int r;
-
-    int outdata = open(dst.c_str(), O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
-    int data = open(src.c_str(), O_RDONLY);
-    
-    if (stat(src.c_str(), &sourceInfo) == -1){
+    struct stat srcstat;
+    if (stat(src.c_str(), &srcstat) == -1){
         cout<<"Cannot open file";
         return;
     }
-    if (stat(dst.c_str(), &destnInfo) == -1){
-        cout<<"Destination directory not found\n";
-        return;
-    }
+    ifstream source(src, ios::binary);
+    ofstream dest(dst, ios::binary);
 
-    while (r = read(data, writeBlock, sizeof(writeBlock)) > 0)
-        write(outdata, writeBlock, r);
-    chown(dst.c_str(), sourceInfo.st_uid, sourceInfo.st_gid);
-    chmod(dst.c_str(), sourceInfo.st_mode);
+    dest << source.rdbuf();
+
+    source.close();
+    dest.close();
+    chown(&dst[0], srcstat.st_uid, srcstat.st_gid);
+    // cout<<permissions(&dst[0])<<", ";
+    chmod(&dst[0], srcstat.st_mode);
 }
 
 void copy_folder(string src, string dest){
-    DIR *d;
-    struct dirent *dir;
+    DIR *direc;
+    struct dirent *d;
     int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); //make if not present
-    d = opendir(src.c_str());
-    if (d == NULL){
-        cout<<"Cannot open source\n";
+    // cout<<src<<", "<<dest;
+    direc = opendir(src.c_str());
+    if (direc == NULL){
+        // cout<<"Cannot open source";
         return;
     }
-    while ((dir = readdir(d)) != NULL){
-        if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
-            ;
-        else
-        {
-            // string name = dir->d_name;
-            string eachfile = src + "/" + dir->d_name;
+    while ((d = readdir(direc)) != NULL){
+        if (strcmp(d->d_name,".") && strcmp(d->d_name,"..")){
+            string name = d->d_name;
+            string eachfile = src + "/" + d->d_name;
             struct stat st;
-            if (stat(eachfile.c_str(), &st) == -1)
-            {
+            if (stat(eachfile.c_str(), &st) == -1){
                 cout << "error 2";
                 return;
             }
 
-            if (S_ISDIR(st.st_mode))
-                copy_folder(eachfile, dest + "/" + dir->d_name);
+            if (S_ISDIR(st.st_mode)){
+                copy_folder(eachfile, dest + "/" + d->d_name);
+            }
             else
-                copy_file(eachfile, dest + "/" + dir->d_name);
+                copy_file(eachfile, dest + "/" + d->d_name);
         }
     }
 }
@@ -419,38 +400,40 @@ void my_rename(string& old_name,string& new_name){
         cout<<" Unable to rename";
 }
 
-void copier(vector<string> &entities)
-{
+void copier(vector<string> &entities){
     int n = entities.size();
-    if (n < 3)
-    {
+    if (n < 3){
         cout<<"Too few arguments!";
         return;
     }
     // cout<<"Got command ";
-
     string dest = entities[n-1];
+    string destnPath = get_path(dest);
     for (int i=1; i<n-1; i++){
-        string destnPath = get_path(dest) + "/" + dest;
-
-        string sourcePath = controller.homePath + "/" + entities[i];
+        
+        string sourcePath = get_path(entities[i]);
 
         struct stat st;
         bool is_folder=false;
         if (stat(sourcePath.c_str(), &st) == -1){
-            cout<<"Cannot open file\n";
+            cout<<"Cannot open dir entry";
             return;
         }
         else{
             if ((S_ISDIR(st.st_mode)))
                 is_folder=true;
         }
+        string s=entities[i].substr(entities[i].find_last_of('/')+1);
         if (is_folder == false)
-            copy_file(sourcePath, destnPath);
+            copy_file(sourcePath, destnPath+"/"+s);
         else{
-            string s=entities[i].substr(entities[i].find_last_of('/')+1);
-            cout<<(destnPath+"/"+s);
-            copy_folder(sourcePath, destnPath+'/'+s);
+            pathsearch(&sourcePath[0],destnPath.substr(destnPath.find_last_of('/')+1));
+            if (controller.foundFile){
+                cout<<"Cannot copy a folder into itself!";
+                controller.foundFile = false;
+                return;
+            } else
+                copy_folder(sourcePath, destnPath+"/"+s);
         }
     }
 }
@@ -518,6 +501,7 @@ void goto_path(string newPath,int tot){
             newPath=controller.homePath.substr(0,controller.homePath.find_last_of('/'));
         else
             newPath = get_path(newPath);
+        cout<<"PATH> "<<newPath;
         if (initialise(&newPath[0])){
             controller.linenum=0;
             moveCursor(0, 0);
@@ -553,8 +537,7 @@ void opener(int* pos, int tot){
     }
 }
 
-void get_allargs(string rawargs, vector<string> &token)
-{
+void get_allargs(string rawargs, vector<string> &token){
     // Used to split string around spaces.
     string arg = "";
     for (auto x : rawargs)
@@ -572,8 +555,7 @@ void get_allargs(string rawargs, vector<string> &token)
     token.push_back(arg);
 }
 
-static void sig_handler(int sig)
-{
+static void sig_handler(int sig){
   if (SIGWINCH == sig) {
     ioctl(0, TIOCGWINSZ, &term);
     disableRaw();
