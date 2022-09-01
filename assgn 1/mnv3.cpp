@@ -42,7 +42,7 @@ struct pctrl
     int count=0;
     int linenum=0;
     int cursorptr;
-    string currentDir;
+    int maxuserlen=0;
     vector<string> comm;
     bool foundFile=false;
 } controller;
@@ -234,6 +234,7 @@ bool initialise(const char *dirname)
 
     controller.count=0;
     all.clear();
+    int maxlen = 0;
     for (int i=0;i<files.size();i++){
         string s(files[i]);
         string sdir(dirname);
@@ -250,6 +251,8 @@ bool initialise(const char *dirname)
             struct filer fs;
             fs.perm = permissions(nm);
             fs.og = ownergroup(nm);
+            if (maxlen<fs.og.length())
+                maxlen=fs.og.length();
             fs.links = links(nm);
             fs.size = readableSize(file_stats.st_size);
             fs.ts = ts_act.substr(4,12);
@@ -257,6 +260,7 @@ bool initialise(const char *dirname)
             all.push_back(fs);
         }
     }
+    controller.maxuserlen = maxlen;
     closedir(dir);
     return true;
 }
@@ -280,9 +284,10 @@ void explorer(int pos, int tot){
 
     for (int i=0;i<showlines && pos+i<all.size();i++){
         if (i==controller.linenum)
-            cout<<">>>  "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
+            cout<<">>>  ";
         else
-            cout<<"     "<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
+            cout<<"     ";
+        cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
     }
 
     moveCursor(tot-1, 0);
