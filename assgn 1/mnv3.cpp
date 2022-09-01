@@ -58,6 +58,7 @@ struct filer
 };
 
 vector<filer> all;
+bool normal=true; //false for command mode
 
 struct termios orig_termios,original;
 
@@ -298,29 +299,38 @@ void explorer(int pos, int tot){
             cout<<">>>  ";
         else
             cout<<"     ";
-        cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;
+        if (39+controller.maxuserlen+all[pos+i].name.length()>term.ws_col){
+            if (44+controller.maxuserlen<term.ws_col){
+                if (all[pos+i].name.length()<3)
+                    cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;
+                else
+                    cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name.substr(0,3)<<"...";
+            }
+            else if (27<term.ws_col){
+                if (all[pos+i].name.length()<3)
+                    cout<<all[pos+i].perm.substr(0,4)<<"... "<<all[pos+i].og.substr(0,3)<<"... "<<all[pos+i].name;
+                else
+                    cout<<all[pos+i].perm.substr(0,4)<<"... "<<all[pos+i].og.substr(0,3)<<"... "<<all[pos+i].name.substr(0,3)<<"...";
+            }
+            else if (20<term.ws_col){
+                if (all[pos+i].name.length()<3)
+                    cout<<all[pos+i].perm.substr(0,4)<<"... "<<all[pos+i].name;
+                else
+                    cout<<all[pos+i].perm.substr(0,4)<<"... "<<all[pos+i].name.substr(0,3)<<"...";
+            }
+            else
+                cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;    
+        }
+        else
+            cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;
         printf("\r\n");
-        // if (38+controller.maxuserlen+all[pos+i].name.length()>term.ws_col){
-        //     int charctr = 5,entryv=0;
-        //     while (charctr < term.ws_col-4){
-        //         if (entryv==0){
-        //             cout<<all[pos+i].perm[charctr-5];
-        //             if (charctr==14)
-        //                 entryv=1;
-        //         }
-        //         if (entryv==1){
-        //             cout<<all[pos+i].perm[charctr-5];
-        //             if (charctr==14)
-        //                 entryv=1;
-        //         }
-        //         charctr++;
-        //     }
-        //     cout<<"...";
-        // }
     }
 
     moveCursor(tot-1, 0);
-    cout << "Normal Mode, Press : to switch to command mode\n";
+    if (46<term.ws_col)
+        cout << "Normal Mode, Press : to switch to command mode\n";
+    else
+        cout << "Normal Mode\n";
     
 }
 
@@ -430,8 +440,10 @@ void my_rename(string& old_name,string& new_name){
     int check = rename(old_name.c_str(), new_name.c_str());
     if (check == -1)
         cout<<" Unable to rename";
-    else
+    else{
         cout<<"Renamed to "<<new_name;
+        // controller.linenum=
+    }
 }
 
 void copier(vector<string> &entities){
@@ -537,7 +549,11 @@ void mover(vector<string> allargs){
                 }
                 else{
                     int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                    my_rename(src,s);
+                    int check = rename(src.c_str(), s.c_str());
+                    if (check == -1)
+                        cout<<" Unable to move file";
+                    else
+                        cout<<"Moved Successfully";
                 }
             }
         }
@@ -618,6 +634,14 @@ static void sig_handler(int sig){
     controller.linenum=0;
     moveCursor(0, 0);
     explorer(0,term.ws_row);
+    if (!normal){
+        moveCursor(term.ws_row-1, 0);
+        cout<<"\33[2K\r";
+        if (48>=term.ws_col)
+            cout << "Command Mode\n";
+        else
+            cout << "Command Mode, Press ESC to switch to normal mode\n";
+    }
     enableRaw();
   }
 
@@ -632,7 +656,6 @@ int main(){
     //     pause();
     // }
     char c;
-    bool normal=true; //false for command mode
     
     char cwd[PATH_MAX];
     getcwd(cwd, PATH_MAX);
@@ -756,7 +779,10 @@ int main(){
                 normal=false;
                 while (!normal){
                     moveCursor(term.ws_row-1, 0);
-                    cout << "Command Mode, Press ESC to switch to normal mode\n";
+                    if (48<term.ws_col)
+                        cout << "Command Mode, Press ESC to switch to normal mode\n";
+                    else
+                        cout << "Command Mode\n";
                     string s,comm;
                     
                     char buf;
@@ -804,7 +830,10 @@ int main(){
                         cout<<"\033[9999;1H\033[J";
                         moveCursor(term.ws_row-1, 0);
                         cout<<"\33[2K\r";
-                        cout << "Normal Mode, Press : to switch to command mode\n";
+                        if (46<term.ws_col)
+                            cout << "Normal Mode, Press : to switch to command mode\n";
+                        else
+                            cout << "Normal Mode\n";
                         break;
                     }
                     
@@ -858,6 +887,8 @@ int main(){
                             if (nftw(delete_path.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
                                 perror("File Tree walk error");
                                 exit(1);
+                            } else {
+                                cout<<"Deleted successfully";
                             }
                         }
                     }
