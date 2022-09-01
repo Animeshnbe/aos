@@ -430,6 +430,8 @@ void my_rename(string& old_name,string& new_name){
     int check = rename(old_name.c_str(), new_name.c_str());
     if (check == -1)
         cout<<" Unable to rename";
+    else
+        cout<<"Renamed to "<<new_name;
 }
 
 void copier(vector<string> &entities){
@@ -870,6 +872,10 @@ int main(){
                                 cout<<"Success";
                     }
                     s="";
+                    initialise(controller.homePath.c_str());
+                    controller.linenum=0;
+                    moveCursor(1, 0);
+                    explorer(pos,term.ws_row);
                 }
             }
             else{
