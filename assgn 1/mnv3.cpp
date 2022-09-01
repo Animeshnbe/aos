@@ -144,9 +144,14 @@ string ownergroup(char* file){
     return modeval;
 }
 
-string get_path(string token)
-{
+string get_path(string token){
     string currentdirpath = controller.homePath;
+    if (currentdirpath=="/" && token.length()>0){
+        if (token=="..")
+            return currentdirpath;
+        currentdirpath = "";
+    }
+
     int i;
     for (i=0;i<token.length();i++){
         if (token[i]=='~'){
@@ -158,17 +163,23 @@ string get_path(string token)
         else if (token[i]=='.'){ 
             if (token[i+1] != '\0'){
                 if (token[i+1] == '.'){
-                    if (i==0)
-                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                    if (i==0){
+                        if (currentdirpath!="/")
+                            currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                    }
                     else if (currentdirpath[currentdirpath.length()-1]=='/'){
-                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
-                        currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                        if (currentdirpath!="/"){
+                            currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                            currentdirpath = currentdirpath.substr(0,currentdirpath.find_last_of('/'));
+                        }
                     }
                     else
                         currentdirpath += '.';
                     i++; //move 2 places
                 }
                 else if (token[i+1]=='/'){
+                    if (i==0)
+                        currentdirpath += '/';
                     i++;
                 } else {
                     currentdirpath += token[i];
@@ -352,6 +363,7 @@ void create_file(string& name,string dest){
     if(!file){
         fstream file(name, fstream::in | fstream::out | fstream::trunc);
     }
+    cout<<"File created!";
 }
 
 int create_dir(string& dirname,string dest){
@@ -456,31 +468,9 @@ void copier(vector<string> &entities){
                 cout<<"Cannot copy a folder into itself!";
                 controller.foundFile = false;
                 return;
-            } else
+            } else {
                 copy_folder(sourcePath, destnPath+"/"+s);
-        }
-    }
-}
-
-void mover(vector<string> allargs){
-    if (allargs.size()<3)
-        cout<<"Too few arguments";
-    else{
-        string dest = get_path(allargs[allargs.size()-1]);
-        for (int i=1;i<allargs.size()-1;i++){
-            string src=get_path(allargs[i]);  //file
-            struct stat st;
-            if (stat(src.c_str(), &st) == -1){
-                cout<<"Cannot open file";
-            }
-            else{
-                if ((S_ISDIR(st.st_mode)))
-                    ;
-                else{
-                    int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                    string s=dest+"/"+src.substr(src.find_last_of('/')+1);
-                    my_rename(src,s);
-                }
+                cout<<"Copied Successfully";
             }
         }
     }
@@ -516,6 +506,45 @@ static int delete_dir(const char *pathname, const struct stat *sbuf, int type, s
     return 0;
 }
 
+void mover(vector<string> allargs){
+    if (allargs.size()<3)
+        cout<<"Too few arguments";
+    else{
+        string dest = get_path(allargs[allargs.size()-1]);
+        for (int i=1;i<allargs.size()-1;i++){
+            string src=get_path(allargs[i]);  //file
+            struct stat st;
+            if (stat(src.c_str(), &st) == -1){
+                cout<<"Cannot open file";
+            }
+            else{
+                string s=dest+"/"+src.substr(src.find_last_of('/')+1);
+                // cout<<"DEST == "<<s;
+                if ((S_ISDIR(st.st_mode))){
+                    pathsearch(&src[0],dest.substr(dest.find_last_of('/')+1));
+                    if (controller.foundFile){
+                        moveCursor(term.ws_row, 0);
+                        cout<<"Cannot move a folder into itself!";
+                        controller.foundFile = false;
+                        return;
+                    } else {
+                        copy_folder(src, s);
+                        if (nftw(src.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
+                            perror("File Tree walk error");
+                            exit(1);
+                        }
+                        cout<<"Moved Successfully";
+                    }
+                }
+                else{
+                    int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    my_rename(src,s);
+                }
+            }
+        }
+    }
+}
+
 void goto_path(string newPath,int tot){
     string prev = controller.homePath;
     if (newPath==".")
@@ -531,6 +560,8 @@ void goto_path(string newPath,int tot){
             moveCursor(0, 0);
             explorer(0,tot);
             controller.visited.push(prev);
+            while(!controller.next.empty())
+                controller.next.pop();
         }
     }
 }
