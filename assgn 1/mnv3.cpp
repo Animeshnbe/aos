@@ -287,7 +287,25 @@ void explorer(int pos, int tot){
             cout<<">>>  ";
         else
             cout<<"     ";
-        cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name<<endl;
+        cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;
+        printf("\r\n");
+        // if (38+controller.maxuserlen+all[pos+i].name.length()>term.ws_col){
+        //     int charctr = 5,entryv=0;
+        //     while (charctr < term.ws_col-4){
+        //         if (entryv==0){
+        //             cout<<all[pos+i].perm[charctr-5];
+        //             if (charctr==14)
+        //                 entryv=1;
+        //         }
+        //         if (entryv==1){
+        //             cout<<all[pos+i].perm[charctr-5];
+        //             if (charctr==14)
+        //                 entryv=1;
+        //         }
+        //         charctr++;
+        //     }
+        //     cout<<"...";
+        // }
     }
 
     moveCursor(tot-1, 0);
@@ -518,15 +536,17 @@ void goto_path(string newPath,int tot){
 }
 
 void opener(int* pos, int tot){
+    if (all[controller.linenum+*pos].name=="." || (all[controller.linenum+*pos].name==".." && controller.homePath=="/"))
+        return;
     if (all[controller.linenum+*pos].perm[0]=='d'){
         controller.visited.push(controller.homePath);
         string newdir;
         if (all[controller.linenum+*pos].name=="..")
             newdir=controller.homePath.substr(0,controller.homePath.find_last_of('/'));
-        else if (all[controller.linenum+*pos].name==".")
-            newdir=controller.homePath;
         else
             newdir=controller.homePath+"/"+all[controller.linenum+*pos].name;
+        while(!controller.next.empty())
+            controller.next.pop();
         initialise(&newdir[0]);
         controller.linenum=0;
         *pos=0;
@@ -536,7 +556,7 @@ void opener(int* pos, int tot){
     else {
         int pid = fork();
         if (pid == 0) {
-            string fileName = controller.homePath+'/'+all[controller.linenum+*pos].name;
+            string fileName = controller.homePath+"/"+all[controller.linenum+*pos].name;
             execl("/usr/bin/xdg-open", "xdg-open", &fileName[0], (char *)0);
             exit(1);
         }
@@ -609,11 +629,15 @@ int main(){
             char* homedir;
             if ((homedir = getenv("HOME"))==NULL)
                 homedir=getpwuid(getuid())->pw_dir;
-            disableRaw();
-            controller.visited.push(controller.homePath);
-            initialise(homedir);
-            moveCursor(controller.linenum, 0);
-            explorer(pos,term.ws_row);
+            if (controller.homePath!=homedir){
+                disableRaw();
+                controller.visited.push(controller.homePath);
+                while(!controller.next.empty())
+                    controller.next.pop();
+                initialise(homedir);
+                moveCursor(controller.linenum, 0);
+                explorer(pos,term.ws_row);
+            }
         }
         else if (iscntrl(c)){
             if (c == '\x1b') {
@@ -682,13 +706,18 @@ int main(){
                 opener(&pos,term.ws_row);
             }
             if (c==127){ //bksp
-                controller.visited.push(controller.homePath);
-                char* updir = dirname(&controller.homePath[0]);
                 disableRaw();
-                initialise(updir);
-                controller.linenum=2;
-                moveCursor(1, 0);
-                explorer(pos,term.ws_row);
+                if (controller.homePath!="/"){
+                    controller.visited.push(controller.homePath);
+                    while(!controller.next.empty())
+                        controller.next.pop();
+                    char* updir = dirname(&controller.homePath[0]);
+                    
+                    initialise(updir);
+                    controller.linenum=0;
+                    moveCursor(1, 0);
+                    explorer(pos,term.ws_row);
+                }
             }
         }
         else {
