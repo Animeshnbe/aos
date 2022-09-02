@@ -342,6 +342,12 @@ void explorer(int pos, int tot){
     
 }
 
+void refresh(){
+    initialise(controller.homePath.c_str());
+    moveCursor(1, 0);
+    explorer(pos,term.ws_row);
+}
+
 void pathsearch(char* dirname, string name){
     struct dirent *dent;
     DIR *dir = opendir(dirname);
@@ -378,6 +384,7 @@ void create_file(string& name,string dest){
     if(!file){
         fstream file(name, fstream::in | fstream::out | fstream::trunc);
     }
+    refresh();
     cout<<"File created!";
 }
 
@@ -449,6 +456,7 @@ void my_rename(string& old_name,string& new_name){
     if (check == -1)
         cout<<" Unable to rename";
     else{
+        refresh();
         cout<<"Renamed to "<<new_name;
         // controller.linenum=
     }
@@ -489,10 +497,11 @@ void copier(vector<string> &entities){
                 return;
             } else {
                 copy_folder(sourcePath, destnPath+"/"+s);
-                cout<<"Copied Successfully";
             }
         }
     }
+    refresh();
+    cout<<"Copied Successfully";
 }
 
 void delete_file(vector<string> &token){
@@ -504,8 +513,10 @@ void delete_file(vector<string> &token){
             int ret = remove(file.c_str());
             if (ret == -1)
                 cout<<"Could not delete file";
-            else
+            else{
+                refresh();
                 cout<<"Deleted successfully!";
+            }
         } else
             cout<<"Not a file";
     } else
@@ -661,12 +672,6 @@ static void sig_handler(int sig){
   }
 
 } 
-
-void refresh(){
-    initialise(controller.homePath.c_str());
-    moveCursor(1, 0);
-    explorer(pos,term.ws_row);
-}
 
   // Capture SIGWINCH
   
@@ -883,7 +888,6 @@ int main(){
                             cout<<"Too few arguments";
                         else{
                             create_file(allargs[1],allargs[2]);
-                            refresh();
                         }
                     }
                     if (allargs[0]=="search"){
@@ -909,6 +913,7 @@ int main(){
                                 perror("File Tree walk error");
                                 exit(1);
                             } else {
+                                refresh();
                                 cout<<"Deleted successfully";
                             }
                         }
@@ -919,9 +924,12 @@ int main(){
                     if (allargs[0]=="create_dir"){
                         if (allargs.size()<3)
                             cout<<"Too few arguments";
-                        else
-                            if (create_dir(allargs[1],allargs[2])==0)
+                        else{
+                            if (create_dir(allargs[1],allargs[2])==0){
+                                refresh();
                                 cout<<"Success";
+                            }
+                        }
                     }
                     s="";
                 }
