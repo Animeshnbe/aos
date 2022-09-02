@@ -403,12 +403,11 @@ int create_dir(string& dirname,string dest){
     return -1;
 }
 
-void copy_file(string src, string dst)
-{
+bool copy_file(string src, string dst){
     struct stat srcstat;
     if (stat(src.c_str(), &srcstat) == -1){
         cout<<"Cannot open file";
-        return;
+        return false;
     }
     ifstream source(src, ios::binary);
     ofstream dest(dst, ios::binary);
@@ -420,9 +419,10 @@ void copy_file(string src, string dst)
     chown(&dst[0], srcstat.st_uid, srcstat.st_gid);
     // cout<<permissions(&dst[0])<<", ";
     chmod(&dst[0], srcstat.st_mode);
+    return true;
 }
 
-void copy_folder(string src, string dest){
+bool copy_folder(string src, string dest){
     DIR *direc;
     struct dirent *d;
     int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH); //make if not present
@@ -430,25 +430,26 @@ void copy_folder(string src, string dest){
     direc = opendir(src.c_str());
     if (direc == NULL){
         // cout<<"Cannot open source";
-        return;
+        return false;
     }
+
+    bool b=true;
     while ((d = readdir(direc)) != NULL){
         if (strcmp(d->d_name,".") && strcmp(d->d_name,"..")){
             string name = d->d_name;
             string eachfile = src + "/" + d->d_name;
             struct stat st;
-            if (stat(eachfile.c_str(), &st) == -1){
-                cout << "error 2";
-                return;
-            }
+            if (stat(eachfile.c_str(), &st) == -1)
+                return false;
 
             if (S_ISDIR(st.st_mode)){
-                copy_folder(eachfile, dest + "/" + d->d_name);
+                b = b && copy_folder(eachfile, dest + "/" + d->d_name);
             }
             else
-                copy_file(eachfile, dest + "/" + d->d_name);
+                b = b && copy_file(eachfile, dest + "/" + d->d_name);
         }
     }
+    return b;
 }
 
 void my_rename(string& old_name,string& new_name){
@@ -471,6 +472,8 @@ void copier(vector<string> &entities){
     // cout<<"Got command ";
     string dest = entities[n-1];
     string destnPath = get_path(dest);
+    vector<string> cp_f;
+    bool cp_s=false;
     for (int i=1; i<n-1; i++){
         
         string sourcePath = get_path(entities[i]);
@@ -478,30 +481,54 @@ void copier(vector<string> &entities){
         struct stat st;
         bool is_folder=false;
         if (stat(sourcePath.c_str(), &st) == -1){
-            cout<<"Cannot open dir entry";
-            return;
+            // cout<<"Cannot open dir entry";
+            cp_f.push_back(entities[i]);
+            continue;
         }
         else{
             if ((S_ISDIR(st.st_mode)))
                 is_folder=true;
         }
         string s=entities[i].substr(entities[i].find_last_of('/')+1);
-        if (is_folder == false)
-            copy_file(sourcePath, destnPath+"/"+s);
+        if (is_folder == false){
+            bool cp_stat = copy_file(sourcePath, destnPath+"/"+s);
+            if (!cp_stat)
+                cp_f.push_back(entities[i]);
+            cp_s = cp_s || cp_stat;
+        }
         else{
             pathsearch(&sourcePath[0],destnPath.substr(destnPath.find_last_of('/')+1));
             if (controller.foundFile){
                 moveCursor(term.ws_row, 0);
                 cout<<"Cannot copy a folder into itself!";
                 controller.foundFile = false;
-                return;
+                cp_f.push_back(entities[i]);
+                continue;
             } else {
-                copy_folder(sourcePath, destnPath+"/"+s);
+                bool cp_stat = copy_folder(sourcePath, destnPath+"/"+s);
+                if (!cp_stat)
+                    cp_f.push_back(entities[i]);
+                cp_s = cp_s || cp_stat;
             }
         }
     }
     refresh();
-    cout<<"Copied Successfully";
+    if (cp_f.size()==0){
+        if (cp_s)
+            cout<<"Copied Successfully";
+        else
+            cout<<"No file/directory to copy";
+    } else {
+        string failed="";
+        for (int f=0;f<cp_f.size();f++)
+            failed+=(cp_f[f]+", ");
+        failed.pop_back();
+        failed.pop_back();
+        if (failed.length()+12<term.ws_col)
+            cout<<"Cannot copy "<<failed;
+        else
+            cout<<"Cannot copy "<<failed.substr(0,term.ws_col-12);
+    }
 }
 
 void delete_file(vector<string> &token){
@@ -541,11 +568,13 @@ void mover(vector<string> allargs){
         cout<<"Too few arguments";
     else{
         string dest = get_path(allargs[allargs.size()-1]);
+        vector<string> mv_f;
+        bool mv_s=false;
         for (int i=1;i<allargs.size()-1;i++){
             string src=get_path(allargs[i]);  //file
             struct stat st;
             if (stat(src.c_str(), &st) == -1){
-                cout<<"Cannot open file";
+                mv_f.push_back(allargs[i]);
             }
             else{
                 string s=dest+"/"+src.substr(src.find_last_of('/')+1);
@@ -555,26 +584,48 @@ void mover(vector<string> allargs){
                     if (controller.foundFile){
                         moveCursor(term.ws_row, 0);
                         cout<<"Cannot move a folder into itself!";
+                        mv_f.push_back(allargs[i]);
                         controller.foundFile = false;
-                        return;
+                        continue;
                     } else {
-                        copy_folder(src, s);
-                        if (nftw(src.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
-                            perror("File Tree walk error");
-                            exit(1);
-                        }
-                        cout<<"Moved Successfully";
+                        bool mv_stat = copy_folder(src, s);
+                        if (mv_stat){
+                            if (nftw(src.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
+                                perror("File Tree walk error");
+                                mv_f.push_back(allargs[i]);
+                                continue;
+                            }
+                            mv_s=true;
+                        } else
+                            mv_f.push_back(allargs[i]);
                     }
                 }
                 else{
                     int ret = mkdir(dest.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
                     int check = rename(src.c_str(), s.c_str());
                     if (check == -1)
-                        cout<<" Unable to move file";
+                        mv_f.push_back(allargs[i]);
                     else
-                        cout<<"Moved Successfully";
+                        mv_s=true;
                 }
             }
+        }
+        refresh();
+        if (mv_f.size()==0){
+            if (mv_s)
+                cout<<"Moved Successfully";
+            else
+                cout<<"No file/directory to move";
+        } else {
+            string failed="";
+            for (int f=0;f<mv_f.size();f++)
+                failed+=(mv_f[f]+", ");
+            failed.pop_back();
+            failed.pop_back();
+            if (failed.length()+12<term.ws_col)
+                cout<<"Cannot move "<<failed;
+            else
+                cout<<"Cannot move "<<failed.substr(0,term.ws_col-12);
         }
     }
 }
