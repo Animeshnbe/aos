@@ -59,6 +59,7 @@ struct filer
 
 vector<filer> all;
 bool normal=true; //false for command mode
+int pos=0;
 
 struct termios orig_termios,original;
 
@@ -283,7 +284,11 @@ void explorer(int pos, int tot){
     
     if (controller.linenum<=0)
         controller.linenum=0;
-    cout<<controller.homePath<<", "<<controller.count<<", "<<tot<<endl;
+
+    if (controller.homePath.length()+6+to_string(controller.count).length()<term.ws_col)
+        cout<<controller.homePath<<", Tot "<<controller.count<<endl;
+    else
+        cout<<controller.homePath.substr(0,4)<<"..., Tot "<<controller.count<<endl;
     // if (controller.visited.empty())
     //     cout<<endl;
     // else
@@ -295,8 +300,10 @@ void explorer(int pos, int tot){
     }
 
     for (int i=0;i<showlines && pos+i<all.size();i++){
-        if (i==controller.linenum)
+        if (i==controller.linenum){
+            cout<<"\033[1;31m";
             cout<<">>>  ";
+        }
         else
             cout<<"     ";
         if (39+controller.maxuserlen+all[pos+i].name.length()>term.ws_col){
@@ -323,6 +330,7 @@ void explorer(int pos, int tot){
         }
         else
             cout<<all[pos+i].perm<<" "<<setw(3)<<right<< all[pos+i].links<<setw(controller.maxuserlen+1)<<all[pos+i].og<< setw(5) << right<<all[pos+i].size<<" "<<all[pos+i].ts<<" "<<all[pos+i].name;
+        cout<<"\033[0m";
         printf("\r\n");
     }
 
@@ -569,11 +577,12 @@ void goto_path(string newPath,int tot){
             newPath=controller.homePath.substr(0,controller.homePath.find_last_of('/'));
         else
             newPath = get_path(newPath);
-        cout<<"PATH> "<<newPath;
         if (initialise(&newPath[0])){
             controller.linenum=0;
+            pos=0;
             moveCursor(0, 0);
             explorer(0,tot);
+            cout<<"PATH> "<<newPath;
             controller.visited.push(prev);
             while(!controller.next.empty())
                 controller.next.pop();
@@ -612,18 +621,24 @@ void opener(int* pos, int tot){
 void get_allargs(string rawargs, vector<string> &token){
     // Used to split string around spaces.
     string arg = "";
-    for (auto x : rawargs)
-    {
-        if (x == ' ')
-        {
-            token.push_back(arg);
-            arg = "";
+    bool qt=false;
+    for (auto x : rawargs){
+        if (x=='\'')
+            qt = !qt;
+
+        else if (x==' '){
+            if (qt)
+                arg += x;
+            else{
+                if (arg.length()>0)
+                    token.push_back(arg);
+                arg = "";
+            }
         }
         else
-        {
             arg += x;
-        }
     }
+    // if (qt)
     token.push_back(arg);
 }
 
@@ -647,6 +662,12 @@ static void sig_handler(int sig){
 
 } 
 
+void refresh(){
+    initialise(controller.homePath.c_str());
+    moveCursor(1, 0);
+    explorer(pos,term.ws_row);
+}
+
   // Capture SIGWINCH
   
 int main(){
@@ -662,8 +683,6 @@ int main(){
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &term);
     initialise(cwd);
 
-    int tot = term.ws_row;
-    int pos=0;
     moveCursor(0, 0);
     explorer(pos,term.ws_row);
     // string name="test";
@@ -862,8 +881,10 @@ int main(){
                     if (allargs[0]=="create_file"){
                         if (allargs.size()<3)
                             cout<<"Too few arguments";
-                        else
+                        else{
                             create_file(allargs[1],allargs[2]);
+                            refresh();
+                        }
                     }
                     if (allargs[0]=="search"){
                         if (allargs.size()<2)
@@ -903,10 +924,6 @@ int main(){
                                 cout<<"Success";
                     }
                     s="";
-                    initialise(controller.homePath.c_str());
-                    controller.linenum=0;
-                    moveCursor(1, 0);
-                    explorer(pos,term.ws_row);
                 }
             }
             else{
