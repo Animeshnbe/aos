@@ -15,7 +15,6 @@
 #include <cstring>
 #include <iomanip>
 #include <fstream>
-#include <filesystem>
 #include <errno.h>
 #include <libgen.h>
 #include <signal.h>
@@ -960,9 +959,11 @@ int main(){
                             cout<<"Too few arguments";
                         else{
                             string delete_path = get_path(allargs[1]);
-                            if (nftw(delete_path.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
+                            if (delete_path == "/" || delete_path == controller.homePath){
+                                cout<<"Cannot delete this folder";
+                            }
+                            else if (nftw(delete_path.c_str(), delete_dir,10, FTW_DEPTH|FTW_MOUNT|FTW_PHYS) < 0){
                                 perror("File Tree walk error");
-                                exit(1);
                             } else {
                                 refresh();
                                 cout<<"Deleted successfully";
