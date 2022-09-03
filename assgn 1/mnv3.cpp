@@ -42,7 +42,6 @@ struct pctrl
     int linenum=0;
     int cursorptr;
     int maxuserlen=0;
-    vector<string> comm;
     bool foundFile=false;
 } controller;
 
@@ -59,6 +58,7 @@ struct filer
 vector<filer> all;
 bool normal=true; //false for command mode
 int pos=0;
+string s;
 
 struct termios orig_termios,original;
 
@@ -717,6 +717,7 @@ static void sig_handler(int sig){
             cout << "Command Mode\n";
         else
             cout << "Command Mode, Press ESC to switch to normal mode\n";
+        s="";
     }
     enableRaw();
   }
@@ -857,7 +858,6 @@ int main(){
                         cout << "Command Mode, Press ESC to switch to normal mode\n";
                     else
                         cout << "Command Mode\n";
-                    string s,comm;
                     
                     char buf;
                     enableRaw();
