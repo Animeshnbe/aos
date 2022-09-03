@@ -886,7 +886,8 @@ int main(){
                                 break;
                             }
                             else if (buf==127){
-                                s.pop_back();
+                                if (s.length()>0)
+                                    s.pop_back();
                                 disableRaw();
                                 cout << '\b' << " " << '\b';
                                 enableRaw();
