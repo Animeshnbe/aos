@@ -76,6 +76,8 @@ void enableRaw(){
     raw.c_iflag &= ~(BRKINT | INPCK | ISTRIP | IXON);
     raw.c_oflag &= ~(OPOST);
     raw.c_lflag &= ~(ECHO | ICANON);
+    // raw.c_cc[VMIN] = 0;
+    // raw.c_cc[VTIME] = 1;
 
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
@@ -718,6 +720,7 @@ static void sig_handler(int sig){
         else
             cout << "Command Mode, Press ESC to switch to normal mode\r\n";
         cout<<s;
+        // s="";
     }
     enableRaw();
   }
@@ -747,6 +750,7 @@ int main(){
 
     while (1) {
         c = '\0';
+        fflush(stdin);
         enableRaw();
         if (read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN) die("read");
         if (c == 'q') {
@@ -770,9 +774,12 @@ int main(){
         else if (iscntrl(c)){
             if (c == '\x1b') {
                 char seq[3];
-                if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+
+                if (read(STDIN_FILENO, &seq[0], 1) != 1) continue;
+                
+                // cout<<seq<<endl;
                 if (seq[0] == '[') {
-                    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+                    if (read(STDIN_FILENO, &seq[1], 1) != 1) continue;
                     switch (seq[1]) {
                         case 'A': //up
                             if (controller.linenum==0){
@@ -826,8 +833,8 @@ int main(){
                     }
                 }
                 // return '\x1b';
-            } 
-            
+            }
+        }
             if (c==10){ // Enter key
                 disableRaw();
                 opener(&pos,term.ws_row);
@@ -846,7 +853,6 @@ int main(){
                     explorer(pos,term.ws_row);
                 }
             }
-        }
         else {
             if (c==58){ // : for command mode
                 disableRaw();
